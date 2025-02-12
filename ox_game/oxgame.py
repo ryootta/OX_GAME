@@ -1,5 +1,5 @@
 import pyxel
-import random
+import oxagent
 
 SCREEN_WIDTH = 200 
 SCREEN_HEIGHT = 150
@@ -9,12 +9,11 @@ GRID_POS_X = SCREEN_WIDTH // 2 - SCREEN_GRID_SIZE // 2
 GRID_POS_Y = SCREEN_HEIGHT // 2 - SCREEN_GRID_SIZE // 2 + SCREEN_HEIGHT // 12
 START_SCENE = "start"
 PLAY_SCENE = "play"
-PLAYER_O = "player_o"
-PLAYER_X = "player_x"
-PLAYER_NONE = "player_none"
+PLAYER_O = 1
+PLAYER_X = -1
+PLAYER_NONE = 0
 OUT_SCOPE = -1
 GAME_OVER_DISPLAY_TIME = 60 * 2
-AGENT_THINK_TIME = 20
 
 class Shape():
     def __init__(self, x, y):
@@ -31,7 +30,6 @@ class O(Shape):
 class X(Shape):
     def __init__(self, x, y):
         super().__init__(x, y)
-
     def draw(self):
         pyxel.blt(self.x , self.y, 0, 16, 16, 16, 16, pyxel.COLOR_WHITE)
 
@@ -39,7 +37,6 @@ class App:
     def __init__(self):
         pyxel.init(SCREEN_WIDTH, SCREEN_HEIGHT, title="OX GAME")
         pyxel.mouse(True)
-        self.grid = Grid()
         self.init_param()
         self.gui_param()
         pyxel.load("my_resource.pyxres")
@@ -48,10 +45,10 @@ class App:
     def init_param(self):
         self.current_scene = START_SCENE
         self.game_over_display_timer = GAME_OVER_DISPLAY_TIME
-        self.player = PLAYER_O
+        self.current_player = PLAYER_O
         self.is_agent = False
         self.winner = None
-        self.grid.init()
+        self.board = [None] * 9
     
     def gui_param(self):
         self.pos_x_string = 20
@@ -86,7 +83,7 @@ class App:
             if button_x <= pyxel.mouse_x <= button_x + button_with and button_y_alone <= pyxel.mouse_y <= button_y_alone + button_hight:
                 self.current_scene = PLAY_SCENE
                 self.is_agent = True
-                self.agent = Agent()
+                self.agent = oxagent.SimpleAgent()
             elif button_x <= pyxel.mouse_x <= button_x + button_with and button_y_together <= pyxel.mouse_y <= button_y_together + button_hight:
                 self.current_scene = PLAY_SCENE
 
@@ -99,16 +96,12 @@ class App:
             return
 
         x =  y  = OUT_SCOPE
-        is_gui = False
+        is_gui = True
         if self.is_agent == True:
-            if self.player != self.agent.turn:
-                print("agent turn")
-                self.agent.set_random_xy(self.grid)
+            if self.current_player == self.agent.turn:
+                self.agent.set_random_xy()
                 x, y = self.agent.get_xy()
-            else:
-                is_gui = True
-        else:
-            is_gui = True
+                is_gui = False
 
         if pyxel.btnp(pyxel.MOUSE_BUTTON_LEFT) and is_gui:
             if GRID_POS_X <= pyxel.mouse_x < GRID_POS_X + SCREEN_GRID_SIZE * 1 // 3:
@@ -124,16 +117,20 @@ class App:
             elif GRID_POS_Y + SCREEN_GRID_SIZE * 2 // 3 < pyxel.mouse_y < GRID_POS_Y + SCREEN_GRID_SIZE:
                 y = 2
                  
-        #範囲外またはすでにOXがあったら追加しない
-        if not (x == OUT_SCOPE or y == OUT_SCOPE) and self.grid.state[y][x] == None: 
-            if self.player == PLAYER_O:
-                self.grid.state[y][x] = O(x,y)
-                self.player = PLAYER_X
-            elif self.player == PLAYER_X:
-                self.grid.state[y][x] = X(x, y)
-                self.player = PLAYER_O
+
+        #範囲内かつOXがなければ追加できる
+        if not (x == OUT_SCOPE or y == OUT_SCOPE) and self.board[y * 3 + x] == None: 
+            if self.current_player == PLAYER_O:
+                self.board[3 * y + x] = O(x,y)
+                self.current_player = PLAYER_X
+            elif self.current_player == PLAYER_X:
+                self.board[3 * y + x] = X(x, y)
+                self.current_player = PLAYER_O
+            
+            if self.is_agent and is_gui: #guiからのみboardに追加
+                self.agent.set_gui(x, y)
         
-        # 縦横斜めでそろうと勝者が決まる
+        # 縦横斜めで3つそろうと勝者が決まる
         patterns = [[[0, 0], [0, 1], [0, 2]], [[1, 0], [1, 1], [1, 2]], [[2, 0], [2, 1], [2, 2]], \
                     [[0, 0], [1, 0], [2, 0]], [[0, 1], [1, 1], [2, 1]], [[0, 2], [1, 2], [2, 2]], \
                     [[0, 0], [1, 1], [2, 2]], [[0, 2], [1, 1], [2, 0]]]
@@ -142,19 +139,20 @@ class App:
             for pattern in patterns:
                 count = 0
                 for pos in pattern:
-                    if isinstance(self.grid.state[pos[0]][pos[1]], shape):
+                    if isinstance(self.board[3 * pos[1] + pos[0]], shape):
                         count += 1
                 if count == 3:
                     return True
             return False
 
+        # Noneの個数が0ならば置けるところがないのでゲーム終了
         if is_winner(O):
             self.winner = PLAYER_O
         elif is_winner(X):
             self.winner = PLAYER_X
 
         # Noneの個数が0ならば置けるところがないのでゲーム終了
-        if self.grid.count_grid == 0 and self.winner == None: #勝者が決まってなければ
+        if self.board.count(None) == 0 and self.winner == None: #勝者が決まってなければ
             self.winner = PLAYER_NONE
 
     def draw_start_scene(self):
@@ -183,23 +181,22 @@ class App:
         pyxel.line(GRID_POS_X + SCREEN_CELL_SIZE * 2, GRID_POS_Y, GRID_POS_X + SCREEN_CELL_SIZE * 2, GRID_POS_Y + SCREEN_GRID_SIZE - 1, grid_color)
 
 
-        for row in self.grid.state:
-            for shape in row:
-                if shape != None:
-                    shape.draw()
+        for shape in self.board:
+            if shape != None:
+                shape.draw()
 
         if self.is_agent == False:       
-            if self.player == PLAYER_O and self.winner == None:
+            if self.current_player == PLAYER_O and self.winner == None:
                 pyxel.text(GRID_POS_X , SCREEN_HEIGHT // 8, 
                             "O Player" , pyxel.COLOR_PEACH)
-            elif self.player == PLAYER_X and self.winner == None:
+            elif self.current_player == PLAYER_X and self.winner == None:
                 pyxel.text(GRID_POS_X , SCREEN_HEIGHT // 8, 
                             "X Player" , pyxel.COLOR_PEACH)
         else:
-            if self.player != self.agent.turn and self.winner == None:
+            if self.current_player == self.agent.turn and self.winner == None:
                 pyxel.text(GRID_POS_X , SCREEN_HEIGHT // 8, 
                             "Com Turn" , pyxel.COLOR_PEACH)
-            elif self.player == self.agent.turn and self.winner == None:
+            elif self.current_player != self.agent.turn and self.winner == None:
                 pyxel.text(GRID_POS_X , SCREEN_HEIGHT // 8, 
                             "Your Turn" , pyxel.COLOR_PEACH)
 
@@ -218,7 +215,7 @@ class App:
         else:
             if self.winner == self.agent.turn:
                 pyxel.text(GRID_POS_X , SCREEN_HEIGHT // 8, 
-                            "You are the winner !!!" , pyxel.COLOR_YELLOW)
+                            "The Winner is Com !!!" , pyxel.COLOR_YELLOW)
             elif self.winner == PLAYER_NONE:
                 pyxel.text(GRID_POS_X , SCREEN_HEIGHT // 8, 
                             "Draw !!!" , pyxel.COLOR_YELLOW)
@@ -226,43 +223,8 @@ class App:
                 pass
             else:
                 pyxel.text(GRID_POS_X , SCREEN_HEIGHT // 8, 
-                            "The Winner is Com !!!" , pyxel.COLOR_YELLOW)
+                            "You are the winner !!!" , pyxel.COLOR_YELLOW)
 
-
-class Grid:
-    def init(self):
-        self.state = [[None, None, None], [None, None, None], [None, None, None]]
-
-    # Noneの残りの数
-    def count_grid(self):
-        n = 0 
-        for row in self.state:
-            n += row.count(None)
-        return n
-
-
-class Agent:
-    def __init__(self):
-        self.x = OUT_SCOPE
-        self.y = OUT_SCOPE
-        self.think_time = AGENT_THINK_TIME
-        if random.randrange(2) == 0:
-            self.turn = PLAYER_O
-        else:
-            self.turn = PLAYER_X
-    
-    def update(self):
-        self.think_time -= 1
-
-    def get_xy(self):
-        return self.x, self.y
-
-    def set_random_xy(self, grid):
-        self.update()
-        if self.think_time == 0:
-            self.think_time = AGENT_THINK_TIME
-            self.x = random.randrange(3)
-            self.y = random.randrange(3)
 
 
 App()

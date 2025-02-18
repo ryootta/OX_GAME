@@ -1,4 +1,5 @@
 import random
+import copy
 
 AGENT_THINK_TIME = 10
 PLAYER_O = 1
@@ -31,10 +32,11 @@ class Agent:
             return OUT_SCOPE, OUT_SCOPE
     
     def set_gui(self, x, y):
+        action = int(3 * y + x)
         if self.turn == PLAYER_O:
-            self.board_string[3*y + x] = PLAYER_X
+            self.board_string[action] = PLAYER_X
         else:
-            self.board_string[3*y + x] = PLAYER_O
+            self.board_string[action] = PLAYER_O
     
     def check_board(self, action):
         if self.board_string[action] == 0:
@@ -47,7 +49,7 @@ class SimpleAgent(Agent):
     def __init__(self):
         super().__init__()
 
-    def set_random_xy(self):
+    def set_xy(self):
         if super().is_set():
             action = random.randrange(9)
             if self.check_board(action):
@@ -55,3 +57,39 @@ class SimpleAgent(Agent):
                 self.y, self.x = divmod(action, 3) #divmodで商と余りを取得
                 self.is_agent_set = True
                 print(self.board_string)
+
+import rlagent
+class RLAgent(Agent):
+    def __init__(self):
+        super().__init__()
+        self.env = rlagent.TicTacToeEnv()
+        self.agent = rlagent.TicTacToeAgent(self.env, epsilon = 0.1, min_alpha = 0.01, learning=False)
+        import msgpack
+        with open('LearningData/RL_learning_data.msgpack', 'rb') as f:
+            self.agent.Q = msgpack.load(f) 
+
+    def set_xy(self):
+        if super().is_set():
+            action = self.agent.get_action()
+            if self.check_board(action): #確率は低いが一様
+                next_state, reward, done = self.env.step(action)
+                self.is_agent_set = True
+                print("set_action", action)
+                self.x, self.y = divmod(action, 3)
+
+    def set_gui(self, x, y):
+        super().set_gui(x, y)
+        action = int(3 * y + x)
+        self.env.step(action)
+
+
+if __name__ == "__main__":
+    agent = RLAgent()
+    agent.set_xy()
+    agent.is_agent_set = True
+    print(agent.get_xy())
+    x = input()
+    y = input()
+    agent.set_gui(x, y)
+    agent.set_xy()
+    print(agent.get_xy())

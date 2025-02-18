@@ -83,7 +83,8 @@ class App:
             if button_x <= pyxel.mouse_x <= button_x + button_with and button_y_alone <= pyxel.mouse_y <= button_y_alone + button_hight:
                 self.current_scene = PLAY_SCENE
                 self.is_agent = True
-                self.agent = oxagent.SimpleAgent()
+                #self.agent = oxagent.SimpleAgent()
+                self.agent = oxagent.RLAgent()
             elif button_x <= pyxel.mouse_x <= button_x + button_with and button_y_together <= pyxel.mouse_y <= button_y_together + button_hight:
                 self.current_scene = PLAY_SCENE
 
@@ -99,7 +100,7 @@ class App:
         is_gui = True
         if self.is_agent == True:
             if self.current_player == self.agent.turn:
-                self.agent.set_random_xy()
+                self.agent.set_xy()
                 x, y = self.agent.get_xy()
                 is_gui = False
 

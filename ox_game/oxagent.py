@@ -1,95 +1,201 @@
+# oxagent.py
 import random
-import copy
+from math import sqrt, log
+from ttt_rules import check_winner
 
-AGENT_THINK_TIME = 10
+# プレイヤー識別用定数
 PLAYER_O = 1
 PLAYER_X = -1
-OUT_SCOPE = -1
 
-class Agent:
-    def __init__(self):
-        self.think_time = AGENT_THINK_TIME
-        self.is_agent_set = False
-        if random.randrange(2) == 0:
-            self.turn = PLAYER_O
+class BaseAgent:
+    def __init__(self, turn=None):
+        # turn が指定されなければランダムに決定
+        if turn is None:
+            turn = random.choice([PLAYER_O, PLAYER_X])
+        self.turn = turn
+        if self.turn == PLAYER_O:
+            self.agent_mark = 'O'
+            self.human_mark = 'X'
         else:
-            self.turn = PLAYER_X
-        self.board_string = [0] * 9
+            self.agent_mark = 'X'
+            self.human_mark = 'O'
+        self.reset()
     
-    def is_set(self):
-        if self.think_time == 0:
-            self.think_time = AGENT_THINK_TIME
-            return True
-        else:
-            self.think_time -= 1
-            return False
+    def reset(self):
+        # 内部盤面は 3×3 の2次元リスト（初期状態は空白）
+        self.board = [[' ' for _ in range(3)] for _ in range(3)]
+        self.move = None
+
+    def set_gui(self, x, y):
+        """GUI側で人間が入力した手 (x, y) を内部盤面に反映する。"""
+        if self.board[y][x] == ' ':
+            self.board[y][x] = self.human_mark
 
     def get_xy(self):
-        if self.is_agent_set:
-            self.is_agent_set = False
-            return self.x, self.y
-        else:
-            return OUT_SCOPE, OUT_SCOPE
-    
-    def set_gui(self, x, y):
-        action = int(3 * y + x)
-        if self.turn == PLAYER_O:
-            self.board_string[action] = PLAYER_X
-        else:
-            self.board_string[action] = PLAYER_O
-    
-    def check_board(self, action):
-        if self.board_string[action] == 0:
-            return True
-        else:
-            return False
+        """set_xy() で決定した手 (x, y) を返す。"""
+        return self.move
 
+# ────────────── ミニマックス法エージェント ──────────────
+class MinimaxAgent(BaseAgent):
+    def get_empty_cells(self, board):
+        return [(r, c) for r in range(3) for c in range(3) if board[r][c] == ' ']
+    
+    def minimax(self, board, depth, is_maximizing, alpha, beta):
+        if check_winner(board, self.agent_mark):
+            return 10 - depth
+        if check_winner(board, self.human_mark):
+            return depth - 10
+        if not self.get_empty_cells(board):
+            return 0
+        
+        if is_maximizing:
+            max_eval = -float("inf")
+            for r, c in self.get_empty_cells(board):
+                board[r][c] = self.agent_mark
+                eval = self.minimax(board, depth + 1, False, alpha, beta)
+                board[r][c] = ' '
+                max_eval = max(max_eval, eval)
+                alpha = max(alpha, eval)
+                if beta <= alpha:
+                    break
+            return max_eval
+        else:
+            min_eval = float("inf")
+            for r, c in self.get_empty_cells(board):
+                board[r][c] = self.human_mark
+                eval = self.minimax(board, depth + 1, True, alpha, beta)
+                board[r][c] = ' '
+                min_eval = min(min_eval, eval)
+                beta = min(beta, eval)
+                if beta <= alpha:
+                    break
+            return min_eval
 
-class SimpleAgent(Agent):
-    def __init__(self):
-        super().__init__()
+    def find_best_move(self):
+        best_score = -float("inf")
+        best_move = None
+        board_copy = [row[:] for row in self.board]
+        for r, c in self.get_empty_cells(board_copy):
+            board_copy[r][c] = self.agent_mark
+            move_score = self.minimax(board_copy, 0, False, -float("inf"), float("inf"))
+            board_copy[r][c] = ' '
+            if move_score > best_score:
+                best_score = move_score
+                # 内部盤面は board[y][x] 形式なので、(x, y) の順で返す
+                best_move = (c, r)
+        return best_move
 
     def set_xy(self):
-        if super().is_set():
-            action = random.randrange(9)
-            if self.check_board(action):
-                self.board_string[action] = self.turn
-                self.y, self.x = divmod(action, 3) #divmodで商と余りを取得
-                self.is_agent_set = True
-                print(self.board_string)
+        move = self.find_best_move()
+        if move is not None:
+            x, y = move
+            self.board[y][x] = self.agent_mark
+            self.move = move
+        else:
+            self.move = (None, None)
 
-import rlagent
-class RLAgent(Agent):
-    def __init__(self):
-        super().__init__()
-        self.env = rlagent.TicTacToeEnv()
-        self.agent = rlagent.TicTacToeAgent(self.env, epsilon = 0.1, min_alpha = 0.01, learning=False)
-        import msgpack
-        with open('LearningData/RL_learning_data.msgpack', 'rb') as f:
-            self.agent.Q = msgpack.load(f) 
+# ────────────── MCTS（モンテカルロ木探索）エージェント ──────────────
+class MCTSNode:
+    def __init__(self, board, parent, move, player):
+        """
+        board  : 3×3 の2次元リスト（状態）
+        parent : 親ノード（rootの場合は None）
+        move   : 親からこのノードへ遷移するために行われた手 (x, y)（rootは None）
+        player : この状態で手番となるプレイヤー（PLAYER_O または PLAYER_X）
+        """
+        self.board = board
+        self.parent = parent
+        self.move = move
+        self.player = player
+        self.visits = 0
+        self.wins = 0
+        self.children = []
+        self.untried_moves = self.get_possible_moves(board)
+    
+    def get_possible_moves(self, board):
+        moves = []
+        for r in range(3):
+            for c in range(3):
+                if board[r][c] == ' ':
+                    moves.append((c, r))
+        return moves
 
+    def select_child(self):
+        c_param = sqrt(2)
+        best_child = None
+        best_value = -float('inf')
+        for child in self.children:
+            value = (child.wins / child.visits) + c_param * sqrt(log(self.visits) / child.visits)
+            if value > best_value:
+                best_value = value
+                best_child = child
+        return best_child
+
+    def add_child(self, move, board, next_player):
+        child = MCTSNode([row[:] for row in board], parent=self, move=move, player=next_player)
+        self.untried_moves.remove(move)
+        self.children.append(child)
+        return child
+
+class MCTSAgent(BaseAgent):
+    def __init__(self, turn=None, iterations=1000):
+        self.iterations = iterations
+        super().__init__(turn)
+    
     def set_xy(self):
-        if super().is_set():
-            action = self.agent.get_action()
-            if self.check_board(action): #確率は低いが一様
-                next_state, reward, done = self.env.step(action)
-                self.is_agent_set = True
-                print("set_action", action)
-                self.x, self.y = divmod(action, 3)
-
-    def set_gui(self, x, y):
-        super().set_gui(x, y)
-        action = int(3 * y + x)
-        self.env.step(action)
-
-
-if __name__ == "__main__":
-    agent = RLAgent()
-    agent.set_xy()
-    agent.is_agent_set = True
-    print(agent.get_xy())
-    x = input()
-    y = input()
-    agent.set_gui(x, y)
-    agent.set_xy()
-    print(agent.get_xy())
+        root = MCTSNode(board=[row[:] for row in self.board], parent=None, move=None, player=self.turn)
+        for _ in range(self.iterations):
+            node = root
+            state = [row[:] for row in self.board]
+            # ① 選択: 完全に展開されているノードまで降下
+            while node.untried_moves == [] and node.children:
+                node = node.select_child()
+                x, y = node.move
+                mark = self.agent_mark if node.parent.player == self.turn else self.human_mark
+                state[y][x] = mark
+            # ② 拡張: 未展開の手があれば展開
+            if node.untried_moves:
+                move = random.choice(node.untried_moves)
+                x, y = move
+                mark = self.agent_mark if node.player == self.turn else self.human_mark
+                state[y][x] = mark
+                next_player = PLAYER_O if node.player == PLAYER_X else PLAYER_X
+                node = node.add_child(move, state, next_player)
+            # ③ シミュレーション: ランダムプレイアウト
+            rollout_state = [row[:] for row in state]
+            current_player = node.player
+            while True:
+                if check_winner(rollout_state, self.agent_mark):
+                    outcome = 1
+                    break
+                if check_winner(rollout_state, self.human_mark):
+                    outcome = 0
+                    break
+                possible_moves = [(c, r) for r in range(3) for c in range(3) if rollout_state[r][c] == ' ']
+                if not possible_moves:
+                    outcome = 0.5  # 引き分け
+                    break
+                move = random.choice(possible_moves)
+                mark = self.agent_mark if current_player == self.turn else self.human_mark
+                rollout_state[move[1]][move[0]] = mark
+                current_player = PLAYER_O if current_player == PLAYER_X else PLAYER_X
+            # ④ 逆伝播: 結果を木全体に伝播（各層で結果を反転）
+            result = outcome
+            while node is not None:
+                node.visits += 1
+                if node.player == self.turn:
+                    node.wins += result
+                else:
+                    node.wins += (1 - result)
+                result = 1 - result
+                node = node.parent
+        if root.children:
+            best_child = max(root.children, key=lambda c: c.visits)
+            self.move = best_child.move
+            x, y = self.move
+            self.board[y][x] = self.agent_mark
+        else:
+            self.move = (None, None)
+    
+    def get_xy(self):
+        return self.move

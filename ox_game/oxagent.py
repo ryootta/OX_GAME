@@ -2,18 +2,18 @@
 import random
 from math import sqrt, log
 from ttt_rules import check_winner
+import ttt_rules
 
-# プレイヤー識別用定数
-PLAYER_O = 1
-PLAYER_X = -1
+# Agent用定数
+AGENT_THINK_TIME = 20
 
 class BaseAgent:
     def __init__(self, turn=None):
         # turn が指定されなければランダムに決定
         if turn is None:
-            turn = random.choice([PLAYER_O, PLAYER_X])
+            turn = random.choice([ttt_rules.PLAYER_O, ttt_rules.PLAYER_X])
         self.turn = turn
-        if self.turn == PLAYER_O:
+        if self.turn == ttt_rules.PLAYER_O:
             self.agent_mark = 'O'
             self.human_mark = 'X'
         else:
@@ -25,11 +25,19 @@ class BaseAgent:
         # 内部盤面は 3×3 の2次元リスト（初期状態は空白）
         self.board = [[' ' for _ in range(3)] for _ in range(3)]
         self.move = None
+        self.think_time = AGENT_THINK_TIME
 
-    def set_gui(self, x, y):
+    def can_set(self):
+        if self.think_time == 0:
+            self.think_time = AGENT_THINK_TIME
+            return True
+        else:
+            self.think_time -= 1
+            return False
+
+    def update_board(self, board):
         """GUI側で人間が入力した手 (x, y) を内部盤面に反映する。"""
-        if self.board[y][x] == ' ':
-            self.board[y][x] = self.human_mark
+        self.board = board
 
     def get_xy(self):
         """set_xy() で決定した手 (x, y) を返す。"""
@@ -82,17 +90,24 @@ class MinimaxAgent(BaseAgent):
             if move_score > best_score:
                 best_score = move_score
                 # 内部盤面は board[y][x] 形式なので、(x, y) の順で返す
-                best_move = (c, r)
-        return best_move
+                best_moves = [(c, r)]  # 最良手リストをリセット
+            elif move_score == best_score:
+                best_moves.append((c, r))  # 同じ評価値の手を追加
+            print(best_moves)
+        return random.choice(best_moves) if best_moves else None
 
     def set_xy(self):
-        move = self.find_best_move()
-        if move is not None:
-            x, y = move
-            self.board[y][x] = self.agent_mark
-            self.move = move
+        if self.can_set():
+            move = self.find_best_move()
+            if move is not None:
+                x, y = move
+                self.board[y][x] = self.agent_mark
+                self.move = move
+            else:
+                self.move = (None, None)
         else:
             self.move = (None, None)
+            print("wait")
 
 # ────────────── MCTS（モンテカルロ木探索）エージェント ──────────────
 class MCTSNode:
@@ -159,7 +174,7 @@ class MCTSAgent(BaseAgent):
                 x, y = move
                 mark = self.agent_mark if node.player == self.turn else self.human_mark
                 state[y][x] = mark
-                next_player = PLAYER_O if node.player == PLAYER_X else PLAYER_X
+                next_player = ttt_rules.PLAYER_O if node.player == ttt_rules.PLAYER_X else ttt_rules.PLAYER_X
                 node = node.add_child(move, state, next_player)
             # ③ シミュレーション: ランダムプレイアウト
             rollout_state = [row[:] for row in state]
@@ -178,7 +193,7 @@ class MCTSAgent(BaseAgent):
                 move = random.choice(possible_moves)
                 mark = self.agent_mark if current_player == self.turn else self.human_mark
                 rollout_state[move[1]][move[0]] = mark
-                current_player = PLAYER_O if current_player == PLAYER_X else PLAYER_X
+                current_player = ttt_rules.PLAYER_O if current_player == ttt_rules.PLAYER_X else ttt_rules.PLAYER_X
             # ④ 逆伝播: 結果を木全体に伝播（各層で結果を反転）
             result = outcome
             while node is not None:
@@ -196,6 +211,3 @@ class MCTSAgent(BaseAgent):
             self.board[y][x] = self.agent_mark
         else:
             self.move = (None, None)
-    
-    def get_xy(self):
-        return self.move

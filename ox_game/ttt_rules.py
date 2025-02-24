@@ -1,5 +1,10 @@
 # ttt_rules.py
 
+# プレイヤー識別用定数
+PLAYER_O = "o_player" 
+PLAYER_X = "x_player"
+PLAYER_NONE = "none_player"
+
 def check_winner(board, player):
     """
     3×3の2次元リスト board に対して、player（"O" または "X"）が勝利しているか判定する。
@@ -16,6 +21,12 @@ def check_winner(board, player):
     if all(board[i][i] == player for i in range(3)) or all(board[i][2-i] == player for i in range(3)):
         return True
     return False
+
+OUT_SCOPE = -1
+def convert_app_xy(x, y):
+    x = x if x != None else OUT_SCOPE
+    y = y if y != None else OUT_SCOPE
+    return x, y
 
 def convert_app_board(app_board, shape_O, shape_X):
     """

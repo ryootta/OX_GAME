@@ -267,30 +267,27 @@ class App:
 
         # 状態表示
         if self.is_agent:       
-            if self.agent is not None:
-                if self.current_player == self.agent.turn and self.winner is None:
-                    pyxel.text(GRID_POS_X, SCREEN_HEIGHT // 8, "Com Turn", pyxel.COLOR_PEACH)
-                elif self.current_player != self.agent.turn and self.winner is None:
-                    pyxel.text(GRID_POS_X, SCREEN_HEIGHT // 8, "Your Turn", pyxel.COLOR_PEACH)
+            if self.current_player == self.agent.turn and self.winner is None:
+                pyxel.text(GRID_POS_X, SCREEN_HEIGHT // 8, "Com Turn", pyxel.COLOR_PEACH)
+            elif self.current_player != self.agent.turn and self.winner is None:
+                pyxel.text(GRID_POS_X, SCREEN_HEIGHT // 8, "Your Turn", pyxel.COLOR_PEACH)
         else:
             if self.current_player == ttt_rules.PLAYER_O and self.winner is None:
                 pyxel.text(GRID_POS_X, SCREEN_HEIGHT // 8, "O Player", pyxel.COLOR_PEACH)
             elif self.current_player == ttt_rules.PLAYER_X and self.winner is None:
                 pyxel.text(GRID_POS_X, SCREEN_HEIGHT // 8, "X Player", pyxel.COLOR_PEACH)
 
-        if self.is_agent and self.agent is not None:
+        if self.is_agent:
             if self.winner == self.agent.turn:
                 pyxel.text(GRID_POS_X, SCREEN_HEIGHT // 8, "The Winner is Com !!!", pyxel.COLOR_YELLOW)
                 if not self.is_rate_calc:
                     self.is_rate_calc = True
                     self.game_count += 1
                     self.rate = self.win_count / self.game_count
-                    print(self.game_count)
-                    print("win rate:", self.rate)
                 if self.rate <= AGENT_CHANGE_RATE and isinstance(self.agent, oxagent.MinimaxAgent):
-                    pyxel.text(GRID_POS_X - FONT_SIZE * 8, SCREEN_HEIGHT // 8 + BLANK + min_blank + FONT_SIZE, "Level down", pyxel.COLOR_YELLOW)
-                if self.rate > NO_HINT_RATE and self.game_mode == GAME_MODE_2:
-                    pyxel.text(GRID_POS_X - FONT_SIZE * 8, GRID_POS_Y, "Hint on", pyxel.COLOR_YELLOW)
+                    pyxel.text(GRID_POS_X - FONT_SIZE * 9, SCREEN_HEIGHT // 8 + BLANK + min_blank + FONT_SIZE, "Level down", pyxel.COLOR_YELLOW)
+                elif self.rate > NO_HINT_RATE and self.game_mode == GAME_MODE_2:
+                    pyxel.text(GRID_POS_X - FONT_SIZE * 9, GRID_POS_Y, "Hint on", pyxel.COLOR_YELLOW)
             elif self.winner == ttt_rules.PLAYER_NONE:
                 pyxel.text(GRID_POS_X, SCREEN_HEIGHT // 8, "Draw !!!", pyxel.COLOR_YELLOW)
             elif self.winner is not None:
@@ -300,12 +297,10 @@ class App:
                     self.win_count += 1
                     self.game_count += 1
                     self.rate = self.win_count / self.game_count
-                    print(self.game_count)
-                    print("win rate:", self.rate)
                 if self.rate > AGENT_CHANGE_RATE and isinstance(self.agent, oxagent.MCTSAgent):
-                    pyxel.text(GRID_POS_X - FONT_SIZE * 8, SCREEN_HEIGHT // 8 + BLANK + min_blank + FONT_SIZE, "Level up", pyxel.COLOR_YELLOW)
-                if self.rate > NO_HINT_RATE and self.game_mode == GAME_MODE_2:
-                    pyxel.text(GRID_POS_X - FONT_SIZE * 8, GRID_POS_Y, "Hint off", pyxel.COLOR_YELLOW)
+                    pyxel.text(GRID_POS_X - FONT_SIZE * 9, SCREEN_HEIGHT // 8 + BLANK + min_blank + FONT_SIZE, "Level up", pyxel.COLOR_YELLOW)
+                elif self.rate > NO_HINT_RATE and self.game_mode == GAME_MODE_2:
+                    pyxel.text(GRID_POS_X - FONT_SIZE * 9, GRID_POS_Y, "Hint off", pyxel.COLOR_YELLOW)
         else:
             if self.winner == ttt_rules.PLAYER_O:
                 pyxel.text(GRID_POS_X, SCREEN_HEIGHT // 8, "The Winner is O Player !!!", pyxel.COLOR_YELLOW)

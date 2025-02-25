@@ -3,6 +3,7 @@ import random
 import oxagent
 from ttt_rules import check_winner, convert_app_board, convert_app_xy
 import ttt_rules
+from device_checker import DeviceChecker
 
 # 画面・グリッド関連の定数
 SCREEN_WIDTH = 200 
@@ -91,12 +92,19 @@ class X(Shape):
 class App:
     def __init__(self):
         pyxel.init(SCREEN_WIDTH, SCREEN_HEIGHT, title="Tic Tac Toe")
-        pyxel.mouse(True)
+
+        # PC(非タップ端末)からの実行時のみマウスカーソルを表示する
+        deviceChecker = DeviceChecker()
+        pyxel.mouse(deviceChecker.is_pc())
+
+        #pyxel.mouse(True)
+        # parameterの初期化
         self.init_param()
         self.win_count = 0
         self.game_count = 0
         self.rate = 0.5
         self.game_mode = GAME_MODE_1 #game1とgame2の差分のパラメータ
+
         pyxel.load("my_resource.pyxres")
         pyxel.run(self.update, self.draw)
     
